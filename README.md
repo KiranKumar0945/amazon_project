@@ -606,7 +606,7 @@ begin
 
 		raise notice 'Product: %  sold has been added to the orders and inventory is updated', v_product_name;
 	else
-		raise 'Quantity is not available';
+		raise notice 'Product: % is not available', v_product_name;
 	end if;
 end
 $$
