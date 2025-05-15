@@ -615,9 +615,8 @@ $$
 **Testing Store Procedure**
 ```sql
 call add_sales
-(
-25005, 2, 5, 25004, 1, 14
-);
+
+(25005, 2, 5, 25004, 1, 14);
 ```
 
 ## **Learning Outcomes**
