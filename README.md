@@ -234,18 +234,387 @@ group by 1,2,3
 ```
 
 
+### Customers with No Purchases
+### 5.Find customers who have registered but never placed an order.
+-- Challenge: List customer details and the time since their registration.
+
+```sql
+-- Approach 1
+select
+	c.customer_id
+	-- reg_date - current_date will give the time since their registration
+from customers as c
+left join orders as o 
+on c.customer_id = o.customer_id
+where o.order_id is null
+
+-- Approach 2
+
+select
+	customer_id
+from customers as c 
+where c.customer_id not in (select  distinct customer_id from orders)
+```
+### Least-Selling Categories by State
+### 6. Identify the least-selling product category for each state.
+-- Challenge: Include the total sales for that category within each state.
+```sql
+select
+*
+from (select 
+	cs.state,
+	c.category_id,
+	c.category_name,
+	sum(ot.total_sale) as total_revenue,
+	rank() over(partition by cs.state order by sum(ot.total_sale) asc) as rn
+from order_items as ot
+join products as p
+on ot.product_id = p.product_id
+join category as c
+on c.category_id = p.category_id
+join orders as o 
+on ot.order_id = o.order_id 
+join customers as cs
+on cs.customer_id = o.customer_id
+group by 1,2,3
+order by 1) t1
+where rn = 1
+```
+
+### 7. Customer Lifetime Value (CLTV)
+### Calculate the total value of orders placed by each customer over their lifetime.
+-- Challenge: Rank customers based on their CLTV.
+```sql
+select
+	c.customer_id,
+	concat(c.first_name, ' ', c.last_name) as full_name,
+	sum(total_sale) as cltv,
+	rank() over(order by sum(total_sale) desc) as rn
+from order_items as ot
+join orders as o 
+on ot.order_id = o.order_id
+join customers as c 
+on o.customer_id = c.customer_id
+group by 1
+```
+
+### 8. Inventory Stock Alerts
+### Query products with stock levels below a certain threshold (e.g., less than 10 units).
+-- Challenge: Include last restock date and warehouse information.
+```sql
+select
+	i.inventory_id,
+	p.product_name,
+	i.warehouse_id,
+	last_stock_date
+from inventory as i 
+join products as p
+on i.product_id = p.product_id
+where stock < 10
+```
+
+### Shipping Delays
+### 9. Identify orders where the shipping date is later than 3 days after the order date.
+-- Challenge: Include customer, order details, and delivery provider.
+```sql
+select
+	o.customer_id,
+	o.order_id,
+	ot.product_id,
+	s.shipping_providers,
+	(shipping_date - order_date) as time_lapsed
+	
+from orders as o
+join shipping as s
+on o.order_id = s.order_id
+join order_items as ot
+on ot.order_id = o.order_id
+where (shipping_date - order_date) > 3
+```
+
+### Payment Success Rate 
+### 10. Calculate the percentage of successful payments across all orders.
+-- Challenge: Include breakdowns by payment status (e.g., failed, pending).
+```sql
+select
+	p.payment_status,
+	count(*),
+	round(count(*)::numeric/(select count(*) from payments)::numeric * 100,2) 
+from orders as o
+join payments as p
+on o.order_id = p.order_id
+group by 1
+```
+### Top Performing Sellers
+### 11. Find the top 5 sellers based on total sales value.
+-- Challenge: Include both successful and failed orders, and display their percentage of successful orders.
+```sql
+with top5 as(
+select
+	s.seller_id,
+	s.seller_name,
+	sum(total_sale) as tsv
+from order_items as ot
+join orders as o 
+on ot.order_id = o.order_id
+join sellers as s
+on o.seller_id = s.seller_id
+group by 1,2
+order by 3 desc
+limit 5),
+order_status as(
+select
+	seller_id,
+	order_status,
+	count(*) as s_count
+from orders 
+where order_status not in ('Inprogress', 'Returned')
+group by 1,2)
+select
+	t.seller_id,
+	t.seller_name,
+	max(case  when order_status = 'Cancelled' then s_count end) as Cancelled,
+	max(case when order_status = 'Completed' then s_count end) as Completed,
+	sum(s_count),
+	round(max(case  when order_status = 'Cancelled' then s_count end)::numeric/sum(s_count)::numeric * 100,2) as percentage_cancelled,
+	round(max(case when order_status = 'Completed' then s_count end)::numeric/sum(s_count)::numeric * 100, 2) as percentage_completed
+from top5 as t
+join order_status as os
+on t.seller_id = os.seller_id
+group by 1,2 
+order by 1
+```
+
+### Product Profit Margin
+### 12. Calculate the profit margin for each product (difference between price and cost of goods sold).
+-- Challenge: Rank products by their profit margin, showing highest to lowest.
+```sql
+select
+	product_id,
+	product_name,
+	profit_margin,
+	dense_rank() over(order by profit_margin desc) as rn
+from(select
+	p.product_id,
+	p.product_name,
+	-- sum((p.price - p.cogs)*o.quantity) as profit,
+	sum((p.price - p.cogs)*o.quantity) / sum(total_sale) * 100 as profit_margin
+from order_items as o
+join products as p 
+on o.product_id = p.product_id
+group by 1) t1
+```
+
+### Most Returned Products
+### 13.Query the top 10 products by the number of returns.
+-- Challenge: Display the return rate as a percentage of total units sold for each product.
+```sql
+select
+	ot.product_id,
+	p.product_name,
+	count(*) as total_units_sold,
+	sum(case when order_status = 'Returned' then 1 else 0 end) as no_of_returns,
+	round(sum(case when order_status = 'Returned' then 1 else 0 end)::numeric/count(*)::numeric * 100, 3) as return_percentage
+	
+from orders as o 
+join order_items as ot 
+on o.order_id = ot.order_id
+join products as p 
+on p.product_id = ot.product_id
+group by 1,2
+```
+### Orders Pending Shipment
+### 14.Find orders that have been paid but are still pending shipment.
+-- Challenge: Include order details, payment date, and customer information.
+```sql
+select 
+	o.order_id,
+	p.payment_date,
+	c.customer_id,
+	concat(first_name, ' ', last_name) as customer_name
+from orders as  o
+join order_items as ot
+on o.order_id = ot.order_id
+join customers as c
+on o.customer_id = c.customer_id
+left join payments as p
+on o.order_id = p.payment_id
+left join shipping as s
+on o.order_id = s.order_id
+where payment_status = 'Payment Successful' and delivery_status is null
+```
+
+### Inactive Sellers
+### 15.Identify sellers who haven’t made any sales in the last 6 months.
+-- Challenge: Show the last sale date and total sales from those sellers.
+```sql
+with sellers_cte as(
+select
+	*
+from sellers
+where seller_id not in (select distinct seller_id from orders where order_date >= current_date - interval '6 month')
+)
+select
+		s.seller_id,
+		max(o.order_date) as last_sale_date,
+		sum(ot.total_sale) as total_sales
+from orders as o
+join sellers_cte as s
+on o.seller_id = s.seller_id
+join order_items as ot
+on ot.order_id = o.order_id
+group by 1
+```
+### IDENTITY customers into returning or new
+### 16. If the customer has done more than 5 return categorize them as returning otherwise new
+-- Challenge: List customers id, name, total orders, total returns
+
+select
+	customer_name,
+	case when total_return > 5 then 'Returning_customers' else 'New' end as category,
+	total_orders,
+	total_return
+
+from(select
+	c.customer_id,
+	concat(first_name, ' ', last_name) as customer_name,
+	count(o.order_id) as total_orders,
+	sum(case when order_status = 'Returned' then 1 else 0 end) as total_return 
+from orders as o
+join customers as c
+on o.customer_id = c.customer_id
+group by 1) t1
 
 
+### Top 5 Customers by Orders in Each State
+### 17. Identify the top 5 customers with the highest number of orders for each state.
+-- Challenge: Include the number of orders and total sales for each customer.
+```sql
+with ranking_cte as(
+select
+	c.customer_id,
+	state,
+	count(o.order_id) as total_orders,
+	sum(ot.total_sale) as total_sales,
+	dense_rank() over(partition by c.state order by count(o.order_id) desc) as rn
+from orders as o
+join customers as c
+on o.customer_id = c.customer_id
+join order_items as ot
+on ot.order_id = o.order_id
+group by 1,2)
+select
+	*
+from ranking_cte
+where rn <= 5
+```
 
+### Revenue by Shipping Provider
+### 18. Calculate the total revenue handled by each shipping provider.
+-- Challenge: Include the total number of orders handled
+```sql
+select
+	s.shipping_providers,
+	sum(total_sale) as revenue_handled,
+	count(o.order_id) as orders_handled,
+from orders as o
+join shipping as s
+on o.order_id = s.order_id
+join order_items as ot 
+on ot.order_id =o.order_id
+group by 1
+```
+### 19. Top 10 product with highest decreasing revenue ratio compare to last year(2022) and current_year(2023)
+--- Challenge: Return product_id, product_name, category_name, 2022 revenue and 2023 revenue decrease ratio at end Round the result
 
+Note: Decrease ratio = cr-ls/ls* 100 (cs = current_year ls=last_year)
 
+```sql
+with t1 as(
+select
+	p.product_id,
+	p.product_name,
+	c.category_name,
+	sum(case when extract(year from order_date) = 2022 then (total_sale) end) as ls_yr,
+	sum(case when extract(year from order_date) = 2023 then (total_sale) end) as cs_yr
+from order_items as ot
+join products as p
+on ot.product_id = p.product_id
+join orders as o
+on o.order_id = ot.order_id
+join category as c
+on p.category_id = c.category_id
+group by 1,2,3)
+select
+	product_id,
+	product_name,
+	category_name,
+	ls_yr,
+	cs_yr,
+	(ls_yr - cs_yr) as revenue_difference,
+	round((ls_yr - cs_yr) / ls_yr * 100,2) as revenue_ratio
+from t1
+where ls_yr > cs_yr
+order by 7 desc
+limit 10
+```
+### Final Task
+### Stored Procedure
+### create a function as soon as the product is sold the the same quantity should reduced from inventory table
+#### fter adding any sales records it should update the stock in the inventory table based on the product and qty purchased
+```sql
+drop procedure if exists add_sales;
+create or replace procedure add_sales(
+	p_order_id int,
+	p_customer_id int,
+	p_seller_id int,
+	p_order_item_id int,
+	p_product_id int,
+	p_quantity int
+)
+language plpgsql
+as $$
+declare
+	v_count int;
+	v_price numeric;
+	v_product_name varchar;
+begin 
+	select price, product_name
+	into v_price, v_product_name
+	from products
+	where product_id = p_product_id;
+	
+	select count(1)
+	into v_count
+	from inventory
+	where product_id = p_product_id and stock >= p_quantity;
 
+	if v_count > 0  then
+		-- add into orders and order_items and update inventory table
+		-- adding into orders list
+		insert into orders(order_id, order_date, customer_id, seller_id)
+		values
+			(p_order_id, current_date, p_customer_id, p_seller_id);
+		-- adding into order_items
+		insert into order_items(order_item_id, order_id, product_id, quantity, price_per_unit, total_sale)
+		values
+			(p_order_item_id, p_order_id, p_product_id, p_quantity, v_price, v_price * p_quantity);
+		-- updating inventory
+		update inventory
+		set stock = (stock - p_quantity)
+		where product_id = p_product_id;
 
+		raise notice 'Product: %  sold has been added to the orders and inventory is updated', v_product_name;
+	else
+		raise 'Quantity is not available';
+	end if;
+end
+$$
+```
 
-
-
-
-
-
-
+**Testing Store Procedure**
+call add_sales
+(
+25005, 2, 5, 25004, 1, 14
+);
 
