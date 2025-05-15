@@ -105,3 +105,90 @@ create table inventory(
 	constraint inventory_fk_order foreign key (product_id) references products(product_id)
 )
 ```
+
+## **Task: Data Cleaning**
+
+I cleaned the dataset by:
+- **Removing duplicates**: Duplicates in the customer and order tables were identified and removed.
+- **Handling missing values**: Null values in critical fields (e.g., customer address, payment status) were either filled with default values or handled using appropriate methods.
+
+---
+
+## **Handling Null Values**
+
+Null values were handled based on their context:
+- **Customer addresses**: Missing addresses were assigned default placeholder values.
+- **Payment statuses**: Orders with null payment statuses were categorized as “Pending.”
+- **Shipping information**: Null return dates were left as is, as not all shipments are returned.
+
+---
+
+## **Objective**
+
+The primary objective of this project is to showcase SQL proficiency through complex queries that address real-world e-commerce business challenges. The analysis covers various aspects of e-commerce operations, including:
+- Customer behavior
+- Sales trends
+- Inventory management
+- Payment and shipping analysis
+- Forecasting and product performance
+  
+
+## **Identifying Business Problems**
+
+Key business problems identified:
+1. Low product availability due to inconsistent restocking.
+2. High return rates for specific product categories.
+3. Significant delays in shipments and inconsistencies in delivery times.
+4. High customer acquisition costs with a low customer retention rate.
+
+---
+
+## **Solving Business Problems**
+
+### Solutions Implemented:
+-- Top Selling Products
+-- Query the top 10 products by total sales value.
+-- Challenge: Include product name, total quantity sold, and total sales value.
+
+
+
+```sql
+with t1 as(
+select
+	ot.product_id,
+	p.product_name,
+	sum(ot.quantity) as total_quantity_sold,
+	sum(ot.total_sale) as total_sales_value,
+	dense_rank() over(order by sum(ot.total_sale) desc) as rn
+from order_items as ot
+join products as p
+on ot.product_id = p.product_id
+group by 1,2)
+select
+	product_id,
+	product_name,
+	total_quantity_sold,
+	total_sales_value
+from t1
+where rn <= 10
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
