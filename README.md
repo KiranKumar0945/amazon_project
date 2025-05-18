@@ -1,4 +1,4 @@
-# **Amazon Sales Analysis Project**
+# **E-commerce Sales Analysis Project**
 
 ### **Difficulty Level: Advanced**
 
